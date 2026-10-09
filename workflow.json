@@ -1,0 +1,1221 @@
+{
+  "name": "Dropbox → TikTok publisher",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "New TikTok pack",
+        "formDescription": "Enter the pack code issued by your CRM for the pack you are starting to work on.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Pack code"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.5,
+      "position": [
+        -192,
+        -80
+      ],
+      "id": "9c10e5c4-fd93-4d27-8793-e12020607096",
+      "name": "Pack form",
+      "notesInFlow": true,
+      "notes": "Entry point of flow 1. Public form with a single field: the pack code issued by the CRM."
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "ad759816-ba6c-481e-aa31-30492d40b679",
+              "name": "packCode",
+              "value": "={{ $json['Pack code'].trim() }}",
+              "type": "string"
+            },
+            {
+              "id": "2d73f1b2-e6a2-4567-831a-375387c96f39",
+              "name": "folderDate",
+              "value": "={{ $json.submittedAt.slice(0, 10) }}",
+              "type": "string"
+            },
+            {
+              "id": "09de1a28-b94d-4d17-87c0-477d37023191",
+              "name": "packPath",
+              "value": "=/Content/Packs/{{ $json.submittedAt.slice(0, 10) }}/{{ $json['Pack code'].trim() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        16,
+        -80
+      ],
+      "id": "7ca20a20-03b0-4454-b5ed-b6e68f932241",
+      "name": "Pack path",
+      "notesInFlow": true,
+      "notes": "Normalises the code (trim) and derives the date and the Dropbox folder path once, so every later node reads the same values."
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "resource": "folder",
+        "path": "={{ $json.packPath }}"
+      },
+      "type": "n8n-nodes-base.dropbox",
+      "typeVersion": 1,
+      "position": [
+        224,
+        -80
+      ],
+      "id": "a5e5e87f-162e-4431-9748-f1a9adf845b8",
+      "name": "Create pack folder",
+      "notesInFlow": true,
+      "credentials": {
+        "dropboxOAuth2Api": {
+          "name": "Dropbox account"
+        }
+      },
+      "onError": "continueErrorOutput",
+      "notes": "Creates /<base>/<date>/<pack>. Errors go to a separate output instead of stopping the run (the folder may already exist)."
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "resource": "folder",
+        "operation": "list",
+        "path": "={{ $('Pack path').first().json.packPath }}",
+        "filters": {}
+      },
+      "type": "n8n-nodes-base.dropbox",
+      "typeVersion": 1,
+      "position": [
+        432,
+        -80
+      ],
+      "id": "8212f053-5967-4f0c-9f25-d6885e2ecc5b",
+      "name": "Check pack folder",
+      "alwaysOutputData": true,
+      "notesInFlow": true,
+      "credentials": {
+        "dropboxOAuth2Api": {
+          "name": "Dropbox account"
+        }
+      },
+      "notes": "Idempotency check: lists the folder regardless of the create result. Success = folder exists. A real failure stops the run here."
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "dataTableId": {
+          "__rl": true,
+          "value": "",
+          "mode": "list",
+          "cachedResultName": "packs"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "packPath",
+              "keyValue": "={{ $('Pack path').first().json.packPath }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "packCode": "={{ $('Pack path').first().json.packCode }}",
+            "folderDate": "={{ $('Pack path').first().json.folderDate }}",
+            "packPath": "={{ $('Pack path').first().json.packPath }}",
+            "status": "active"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "packCode",
+              "displayName": "packCode",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "folderDate",
+              "displayName": "folderDate",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "packPath",
+              "displayName": "packPath",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        640,
+        -80
+      ],
+      "id": "4daa92b4-ffb8-4272-b3ed-3f5bb86165c6",
+      "name": "Register pack",
+      "executeOnce": true,
+      "notes": "Upserts the pack into the `packs` registry (key: packPath). This table is the only link between flow 1 and flow 2.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "operation": "completion",
+        "completionTitle": "Pack registered",
+        "completionMessage": "=Open the folder and upload the finished videos:\n<a href=\"https://www.dropbox.com/home{{ encodeURI($('Pack path').first().json.packPath) }}\" target=\"_blank\">{{ $('Pack path').first().json.packPath }}</a>\n\nPublishing starts automatically within 15 minutes after upload.",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 2.5,
+      "position": [
+        864,
+        -80
+      ],
+      "id": "739740c8-6c2d-492d-a59b-35d42125b087",
+      "name": "Form done",
+      "notes": "Confirmation screen with a direct link to the Dropbox folder to upload into.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -192,
+        320
+      ],
+      "id": "5cb75c59-4939-48c1-b31a-aa3dcd92cb38",
+      "name": "Manual run",
+      "notes": "Manual entry point of flow 2, for testing.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "value": "",
+          "mode": "list",
+          "cachedResultName": "packs"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "status",
+              "keyValue": "active"
+            }
+          ]
+        },
+        "returnAll": true
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        224,
+        240
+      ],
+      "id": "016ec1b0-e5b7-4fbf-adaf-3885838532ca",
+      "name": "Active packs",
+      "notes": "Reads all packs with status = active from the registry.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "resource": "folder",
+        "operation": "list",
+        "path": "={{ $json.packPath }}",
+        "returnAll": true,
+        "filters": {}
+      },
+      "type": "n8n-nodes-base.dropbox",
+      "typeVersion": 1,
+      "position": [
+        432,
+        240
+      ],
+      "id": "baa2b976-58eb-4539-b409-4cf1c50af951",
+      "name": "List pack files",
+      "credentials": {
+        "dropboxOAuth2Api": {
+          "name": "Dropbox account"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "notes": "Lists every active pack folder. A missing folder yields an error item instead of aborting the other packs.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// File extensions treated as publishable video\nconst VIDEO_EXT = ['.mp4', '.mov'];\n\nconst result = [];\n\n// $input.all() returns every incoming item (files of all active packs)\nfor (const item of $input.all()) {\n  const f = item.json;\n\n  // Skip Dropbox error items, folders and non-video files\n  if (f.error) continue;\n  if (f.type !== 'file') continue;\n  const lower = (f.name || '').toLowerCase();\n  if (!VIDEO_EXT.some(ext => lower.endsWith(ext))) continue;\n\n  // Path layout: /<base>/<date>/<packCode>/<file>\n  const parts = f.pathDisplay.split('/');\n  const packCode = parts[parts.length - 2];\n  const folderDate = parts[parts.length - 3];\n\n  result.push({\n    json: {\n      name: f.name.replace(/\\.[^.]+$/, ''), // file name without extension\n      fileName: f.name,\n      dropboxPath: f.pathLower,              // idempotency key (case-insensitive path)\n      dropboxPathDisplay: f.pathDisplay,\n      packCode,\n      folderDate,\n      sizeBytes: f.contentSize,\n      modifiedAt: f.lastModifiedServer,\n    },\n  });\n}\n\n// Oldest upload first: deterministic publishing order\nresult.sort((a, b) => a.json.modifiedAt.localeCompare(b.json.modifiedAt));\n\nreturn result;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        640,
+        240
+      ],
+      "id": "7ee32a0e-5f98-4e08-8518-e544bf645bfb",
+      "name": "Only videos",
+      "notes": "Keeps video files only, derives the pack code from the path, emits a clean item per video, oldest first.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "operation": "rowNotExists",
+        "dataTableId": {
+          "__rl": true,
+          "value": "",
+          "mode": "list",
+          "cachedResultName": "posted"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "dropboxPath",
+              "keyValue": "={{ $json.dropboxPath }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        864,
+        240
+      ],
+      "id": "e642b3d1-a9a2-4858-98e7-773ec2465068",
+      "name": "Not posted yet",
+      "notes": "Anti-join against the `posted` ledger by Dropbox path. Videos already known (any status) are dropped.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        1056,
+        240
+      ],
+      "id": "466477b3-a25d-416c-a2e4-effc2f229bfc",
+      "name": "One by one",
+      "notes": "Processes one video end to end before starting the next, so a failure affects a single video.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.dropboxapi.com/2/sharing/create_shared_link_with_settings",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ path: $json.dropboxPath }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        1472,
+        304
+      ],
+      "id": "29b06c1d-b1b6-4c50-a3b7-c8684d375546",
+      "name": "Shared link",
+      "credentials": {
+        "oAuth2Api": {
+          "name": "Dropbox sharing"
+        }
+      },
+      "notes": "Creates a public Dropbox link for the tracker sheet. HTTP 409 (link already exists) is returned as data, not as an error.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.dropboxapi.com/2/files/get_temporary_link",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ path: $('Reserve row').item.json.dropboxPath }) }}",
+        "options": {
+          "response": {
+            "response": {}
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        1680,
+        304
+      ],
+      "id": "4c46ba20-05b0-47b6-8c64-80f2c4e1a47c",
+      "name": "Temp link",
+      "credentials": {
+        "oAuth2Api": {
+          "name": "Dropbox sharing"
+        }
+      },
+      "notes": "Gets a direct, 4-hour download URL. The publishing API must fetch the raw file; a shared link returns an HTML page.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "dataTableId": {
+          "__rl": true,
+          "value": "",
+          "mode": "list",
+          "cachedResultName": "posted"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "dropboxPath",
+              "keyValue": "={{ $json.dropboxPath }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "name": "={{ $json.name }}",
+            "dropboxPath": "={{ $json.dropboxPath }}",
+            "packCode": "={{ $json.packCode }}",
+            "status": "pending"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "name",
+              "displayName": "name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "postID",
+              "displayName": "postID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "dropboxLink",
+              "displayName": "dropboxLink",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "dropboxPath",
+              "displayName": "dropboxPath",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "packCode",
+              "displayName": "packCode",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "zernioPostID",
+              "displayName": "zernioPostID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "error",
+              "displayName": "error",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1264,
+        304
+      ],
+      "id": "01ab8695-b2dc-4143-aadf-3fedc5687b18",
+      "name": "Reserve row",
+      "notes": "Write-ahead record: inserts status = pending BEFORE publishing. Prevents double posting on overlapping or crashed runs.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Set only if several TikTok accounts are connected in Zernio; otherwise leave empty\nconst TIKTOK_USERNAME = '';\n\n// Accounts fetched once per run by the \"List accounts\" node\nconst accounts = $('List accounts').first().json.accounts || [];\n\nconst candidates = accounts.filter(a =>\n  a.platform === 'tiktok' &&\n  a.isActive &&\n  (!TIKTOK_USERNAME || a.username === TIKTOK_USERNAME)\n);\n\n// Fail fast instead of posting to the wrong account\nif (candidates.length === 0) {\n  throw new Error('No active TikTok account is connected in Zernio');\n}\nif (candidates.length > 1) {\n  throw new Error('Several TikTok accounts found: set TIKTOK_USERNAME in the \"Build request\" node');\n}\n\nconst ACCOUNT_ID = candidates[0]._id;\n\n// Caption variants. Replace with your own copy\nconst CAPTIONS = [\n  'Caption variant 1 #hashtag',\n  'Caption variant 2 #hashtag',\n  'Caption variant 3 #hashtag',\n  'Caption variant 4 #hashtag',\n  'Caption variant 5 #hashtag',\n];\n\n// Current video comes from the loop node\nconst video = $('One by one').item.json;\n\n// Random variant lowers the chance of duplicate-content rejections\nconst caption = CAPTIONS[Math.floor(Math.random() * CAPTIONS.length)];\n\n// $json is the \"Temp link\" response and holds the direct download URL\nreturn {\n  json: {\n    name: video.name,\n    dropboxPath: video.dropboxPath,\n    caption,\n    body: {\n      content: caption,\n      mediaItems: [{ type: 'video', url: $json.link }],\n      platforms: [{ platform: 'tiktok', accountId: ACCOUNT_ID }],\n      tiktokSettings: {\n        privacy_level: 'PUBLIC_TO_EVERYONE',\n        allow_comment: true,\n        allow_duet: true,\n        allow_stitch: true,\n        content_preview_confirmed: true,\n        express_consent_given: true,\n        draft: false,\n      },\n      publishNow: true,\n    },\n  },\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1888,
+        304
+      ],
+      "id": "f730da65-4de1-4905-84f3-d1f3576006f5",
+      "name": "Build request",
+      "notes": "Selects the TikTok account, picks a caption and assembles the request body.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "url": "https://zernio.com/api/v1/accounts",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        16,
+        240
+      ],
+      "id": "f96b3151-7e78-491f-a7ce-f5f2fc4f9a0b",
+      "name": "List accounts",
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Zernio API"
+        }
+      },
+      "notes": "Reads connected social accounts from Zernio. The TikTok account id is resolved at run time, never hard-coded.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://zernio.com/api/v1/posts",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          },
+          "timeout": 180000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        2096,
+        304
+      ],
+      "id": "44dd5497-1fac-4bef-b82c-cbf0e684b228",
+      "name": "Publish",
+      "retryOnFail": false,
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Zernio API"
+        }
+      },
+      "notes": "Sends the post to Zernio (official TikTok Content Posting API). Retries are disabled on purpose: a lost response must not cause a second post.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "amount": 3,
+        "unit": "minutes"
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        2304,
+        304
+      ],
+      "id": "30bf3c8d-310c-4bd9-b82e-0cebd8f904b0",
+      "name": "Wait for TikTok",
+      "notes": "TikTok processes uploads asynchronously. Also spaces consecutive posts by ~3 minutes.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "url": "=https://zernio.com/api/v1/posts/{{ $('Publish').item.json.post._id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        2528,
+        304
+      ],
+      "id": "ebc55f7d-c5cb-4481-848b-22aab615dd06",
+      "name": "Check post",
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Zernio API"
+        }
+      },
+      "notes": "Polls the final state. The first response only says `publishing`; the video id appears here.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "dataTableId": {
+          "__rl": true,
+          "value": "",
+          "mode": "list",
+          "cachedResultName": "posted"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "dropboxPath",
+              "keyValue": "={{ $('Build request').item.json.dropboxPath }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "status": "={{ $json.post?.platforms?.[0]?.removedFromPlatformAt ? 'removed' : ($json.post?.status ?? 'failed') }}",
+            "postID": "={{ $json.post?.platforms?.[0]?.platformPostId ?? '' }}",
+            "zernioPostID": "={{ $('Publish').item.json.post?._id ?? '' }}",
+            "dropboxPath": "={{ $('Build request').item.json.dropboxPath }}",
+            "error": "={{ $json.post?.platforms?.[0]?.errorMessage ?? '' }}",
+            "dropboxLink": "={{ $('Shared link').item.json.url ?? $('Shared link').item.json.error?.shared_link_already_exists?.metadata?.url ?? '' }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "name",
+              "displayName": "name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "postID",
+              "displayName": "postID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "dropboxLink",
+              "displayName": "dropboxLink",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "dropboxPath",
+              "displayName": "dropboxPath",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "packCode",
+              "displayName": "packCode",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "zernioPostID",
+              "displayName": "zernioPostID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "error",
+              "displayName": "error",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        2752,
+        304
+      ],
+      "id": "433a3f1d-343a-42c9-876b-5147fda1e3bc",
+      "name": "Save result",
+      "notes": "Updates the ledger row: final status, TikTok video id, Zernio post id, Dropbox link, error text.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_SPREADSHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Creatives",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Name": "={{ $json.name }}",
+            "Post ID": "='{{ $json.postID }}",
+            "Dropbox Link": "={{ $json.dropboxLink }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Name",
+              "displayName": "Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Post ID",
+              "displayName": "Post ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Dropbox Link",
+              "displayName": "Dropbox Link",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {
+          "locationDefine": {
+            "values": {
+              "headerRow": 2
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        3168,
+        304
+      ],
+      "id": "3e0268c3-ade4-4ca2-bb46-2e4f61807d51",
+      "name": "Add to sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "name": "Google Sheets account"
+        }
+      },
+      "notes": "Appends one row (name, video id, Dropbox link) to the tracker. Only three columns are mapped; existing data and formulas are untouched.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "8502a970-9a38-449b-8899-6815b89a39b6",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "published",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2960,
+        304
+      ],
+      "id": "c6f167bb-bce8-4973-842d-9541965a1fdf",
+      "name": "Published?",
+      "notes": "Only successful posts reach the business tracker. Both branches return to the loop.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        -192,
+        160
+      ],
+      "id": "83f0d66b-b1d6-49af-bcb9-5b2c758389d9",
+      "name": "Every 15 min",
+      "notes": "Production entry point of flow 2. Polling replaces a Dropbox trigger, which n8n does not provide.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "content": "## Flow 1 · Pack registration\nForm → folder in Dropbox → row in the `packs` registry. Runs once per pack.",
+        "height": 330,
+        "width": 1380,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -280,
+        -240
+      ],
+      "id": "note-flow-1",
+      "name": "Note flow 1"
+    },
+    {
+      "parameters": {
+        "content": "## Flow 2 · Publishing\nEvery 15 min: active packs → new videos → one by one: reserve → links → publish → verify → record. Only `published` rows reach the tracker sheet.",
+        "height": 420,
+        "width": 3700,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -280,
+        110
+      ],
+      "id": "note-flow-2",
+      "name": "Note flow 2"
+    }
+  ],
+  "connections": {
+    "Pack form": {
+      "main": [
+        [
+          {
+            "node": "Pack path",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pack path": {
+      "main": [
+        [
+          {
+            "node": "Create pack folder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create pack folder": {
+      "main": [
+        [
+          {
+            "node": "Check pack folder",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Check pack folder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check pack folder": {
+      "main": [
+        [
+          {
+            "node": "Register pack",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Register pack": {
+      "main": [
+        [
+          {
+            "node": "Form done",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manual run": {
+      "main": [
+        [
+          {
+            "node": "List accounts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Active packs": {
+      "main": [
+        [
+          {
+            "node": "List pack files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List pack files": {
+      "main": [
+        [
+          {
+            "node": "Only videos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Only videos": {
+      "main": [
+        [
+          {
+            "node": "Not posted yet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Not posted yet": {
+      "main": [
+        [
+          {
+            "node": "One by one",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "One by one": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Reserve row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Shared link": {
+      "main": [
+        [
+          {
+            "node": "Temp link",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Temp link": {
+      "main": [
+        [
+          {
+            "node": "Build request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reserve row": {
+      "main": [
+        [
+          {
+            "node": "Shared link",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build request": {
+      "main": [
+        [
+          {
+            "node": "Publish",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List accounts": {
+      "main": [
+        [
+          {
+            "node": "Active packs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Publish": {
+      "main": [
+        [
+          {
+            "node": "Wait for TikTok",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait for TikTok": {
+      "main": [
+        [
+          {
+            "node": "Check post",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check post": {
+      "main": [
+        [
+          {
+            "node": "Save result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save result": {
+      "main": [
+        [
+          {
+            "node": "Published?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add to sheet": {
+      "main": [
+        [
+          {
+            "node": "One by one",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Published?": {
+      "main": [
+        [
+          {
+            "node": "Add to sheet",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "One by one",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Every 15 min": {
+      "main": [
+        [
+          {
+            "node": "List accounts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
