@@ -1,0 +1,26 @@
+# n8n for the Dropbox → TikTok publisher
+# Start: docker compose up -d      Stop: docker compose down (data is kept in the volume)
+
+services:
+  n8n:
+    # Official image; the workflow uses built-in nodes only
+    image: docker.n8n.io/n8nio/n8n:2.41.6
+    container_name: n8n-tiktok
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      # Time zone drives the date in the pack folder name and the schedule
+      TZ: "Europe/Rome"
+      GENERIC_TIMEZONE: "Europe/Rome"
+      N8N_RUNNERS_ENABLED: "true"
+      # Uncomment when n8n is served on a public HTTPS address (tunnel or reverse proxy)
+      # WEBHOOK_URL: "https://your-address/"
+      # N8N_EDITOR_BASE_URL: "https://your-address/"
+      # N8N_PROXY_HOPS: "1"
+    volumes:
+      # Workflows, credentials, Data Tables and the encryption key
+      - n8n_data:/home/node/.n8n
+
+volumes:
+  n8n_data:
